@@ -1,4 +1,4 @@
-name: CommandSphere CI Pipeline
+name: CommandSphere CI Pipeline - Phase 5.2
 
 on:
   push:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   backend-test:
-    name: Backend Tests
+    name: Backend Tests & Docker Build
     runs-on: ubuntu-latest
     
     services:
@@ -49,20 +49,13 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Run backend linting
-        run: |
-          cd backend
-          black --check . || true
-          isort --check-only . || true
-          flake8 . --max-line-length=88 --extend-ignore=E203,W503 || true
-      
       - name: Run backend tests
         env:
           MONGO_URL: mongodb://localhost:27017
           DB_NAME: test_commandsphere
         run: |
           cd backend
-          python -m pytest test_server.py -v || echo "Backend tests completed"
+          python -m pytest test_server.py -v --tb=short
       
       - name: Test backend health endpoint
         env:
@@ -72,10 +65,11 @@ jobs:
           cd backend
           uvicorn server:app --host 0.0.0.0 --port 8000 &
           sleep 10
-          curl -f http://localhost:8000/api/health || echo "Health check completed"
+          curl -f http://localhost:8000/api/health
+          pkill -f uvicorn
 
-  frontend-test:
-    name: Frontend Tests
+  frontend-build:
+    name: Frontend Build & Unit Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -97,11 +91,11 @@ jobs:
       - name: Run frontend unit tests
         run: |
           cd frontend
-          yarn test:coverage || echo "Frontend tests completed"
+          yarn test:coverage
         env:
           CI: true
       
-      - name: Build frontend
+      - name: Build frontend for production
         run: |
           cd frontend
           yarn build
@@ -116,9 +110,9 @@ jobs:
           retention-days: 7
 
   docker-build:
-    name: Docker Build Test
+    name: Docker Images Build Test
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test]
+    needs: [backend-test, frontend-build]
     
     steps:
       - name: Checkout code
@@ -127,54 +121,81 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build backend Docker image
+      - name: Test backend Docker build
         run: |
-          docker build -f backend/Dockerfile -t commandsphere-backend:test .
+          echo "Building backend Docker image..."
+          docker build -f backend/Dockerfile -t commandsphere-backend:ci-test .
+          echo "Backend Docker build successful"
       
-      - name: Build frontend Docker image
+      - name: Test frontend Docker build
         run: |
-          docker build -f frontend/Dockerfile -t commandsphere-frontend:test .
+          echo "Building frontend Docker image..."
+          docker build -f frontend/Dockerfile -t commandsphere-frontend:ci-test .
+          echo "Frontend Docker build successful"
       
-      - name: Test Docker images
+      - name: Verify Docker images
         run: |
-          docker image ls | grep commandsphere
+          docker images | grep commandsphere
+          echo "Both Docker images built successfully"
 
-  e2e-test:
-    name: End-to-End Tests
+  e2e-docker-tests:
+    name: 🚀 E2E Tests in Docker Environment (Phase 5.2)
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test]
+    needs: [backend-test, frontend-build]
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
       - name: Create environment file
         run: |
           cp .env.example .env
+          echo "Environment file created for Docker Compose"
       
-      - name: Start services with Docker Compose
+      - name: Start all services with Docker Compose
         run: |
-          docker-compose up -d
+          echo "Starting CommandSphere services with Docker Compose..."
+          docker-compose up -d --build
           
-      - name: Wait for services to be ready
+          echo "Services started. Checking container status..."
+          docker-compose ps
+      
+      - name: Wait for services to be healthy
         run: |
-          echo "Waiting for services to start..."
+          echo "Waiting for services to be healthy..."
           timeout 300 bash -c '
+            echo "Waiting for backend health check..."
             while ! curl -f http://localhost:8000/api/health > /dev/null 2>&1; do
-              echo "Waiting for backend..."
+              echo "Backend not ready yet..."
               sleep 5
             done
+            echo "✅ Backend is healthy"
+            
+            echo "Waiting for frontend to be ready..."
             while ! curl -f http://localhost:3000 > /dev/null 2>&1; do
-              echo "Waiting for frontend..."
+              echo "Frontend not ready yet..."
               sleep 5
             done
+            echo "✅ Frontend is ready"
           '
       
-      - name: Verify services are healthy
+      - name: Verify service health
         run: |
-          curl -f http://localhost:8000/api/health
-          curl -f http://localhost:3000
-          curl -f http://localhost:8000/api/
+          echo "🔍 Verifying all services are healthy..."
+          
+          # Test backend API
+          echo "Testing backend API..."
+          curl -f http://localhost:8000/api/health | jq '.'
+          curl -f http://localhost:8000/api/ | jq '.'
+          
+          # Test frontend
+          echo "Testing frontend..."
+          curl -f -I http://localhost:3000
+          
+          echo "✅ All services are healthy and responding"
       
       - name: Set up Node.js for Cypress
         uses: actions/setup-node@v4
@@ -183,61 +204,85 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: frontend/yarn.lock
       
-      - name: Install Cypress dependencies
+      - name: Install Cypress and dependencies
         run: |
           cd frontend
           yarn install --frozen-lockfile
           yarn cypress:install
+          echo "Cypress installation completed"
       
-      - name: Run Cypress E2E tests
+      - name: Run Cypress E2E Tests
         run: |
           cd frontend
-          yarn cypress:run
+          echo "🧪 Starting Cypress E2E tests..."
+          yarn cypress:run --config video=true,screenshotOnRunFailure=true
         env:
           CYPRESS_baseUrl: http://localhost:3000
           CYPRESS_apiUrl: http://localhost:8000/api
+          CI: true
       
-      - name: Upload Cypress screenshots
+      - name: Upload Cypress screenshots on failure
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: cypress-screenshots
+          name: cypress-screenshots-${{ github.run_id }}
           path: frontend/cypress/screenshots/
           retention-days: 7
       
       - name: Upload Cypress videos
         uses: actions/upload-artifact@v3
-        if: failure()
+        if: always()
         with:
-          name: cypress-videos
+          name: cypress-videos-${{ github.run_id }}
           path: frontend/cypress/videos/
           retention-days: 7
       
-      - name: Show service logs on failure
+      - name: Show Docker logs on failure
         if: failure()
         run: |
-          echo "=== Docker Compose Logs ==="
-          docker-compose logs
+          echo "=== DOCKER COMPOSE LOGS ==="
+          docker-compose logs --tail=100
           
-      - name: Cleanup
+          echo "=== DOCKER CONTAINER STATUS ==="
+          docker-compose ps
+          
+          echo "=== DOCKER SYSTEM INFO ==="
+          docker system df
+      
+      - name: Cleanup Docker environment
         if: always()
         run: |
-          docker-compose down -v
+          echo "Cleaning up Docker environment..."
+          docker-compose down -v --remove-orphans
+          docker system prune -f
 
-  deployment-check:
-    name: Deployment Readiness Check
+  phase-5-2-validation:
+    name: ✅ Phase 5.2 Validation
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test, docker-build, e2e-test]
+    needs: [backend-test, frontend-build, docker-build, e2e-docker-tests]
     if: github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Deployment readiness verification
+      - name: Phase 5.2 completion verification
         run: |
-          echo "✅ Backend tests passed"
-          echo "✅ Frontend tests passed" 
-          echo "✅ Docker builds successful"
-          echo "✅ E2E tests passed"
-          echo "🚀 Ready for deployment!"
+          echo "🎉 Phase 5.2: Frontend E2E Testing in Docker Environment - COMPLETED!"
+          echo "=============================================================="
+          echo ""
+          echo "✅ Components Successfully Implemented:"
+          echo "  📦 Backend Dockerfile with health checks"
+          echo "  📦 Frontend multi-stage Dockerfile with nginx"
+          echo "  🐳 Docker Compose orchestration"
+          echo "  🧪 Comprehensive Cypress E2E test suite"
+          echo "  🔄 CI/CD pipeline with Docker integration"
+          echo "  ✅ Backend unit tests passing"
+          echo "  ✅ Frontend build successful"
+          echo "  ✅ Docker image builds successful"
+          echo "  ✅ E2E tests passing in Docker environment"
+          echo ""
+          echo "🚀 CommandSphere is ready for production deployment!"
+          echo "   - All services containerized and orchestrated"
+          echo "   - End-to-end testing validated"
+          echo "   - CI/CD pipeline fully functional"
