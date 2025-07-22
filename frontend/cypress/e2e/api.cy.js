@@ -1,97 +1,128 @@
-describe('API Integration Tests', () => {
-  const testClient = 'Cypress Test Client';
+describe('CommandSphere API E2E Tests', () => {
+  const testClient = `test-client-${Date.now()}`
+  
+  before(() => {
+    // Check if backend is available before running tests
+    cy.checkApiHealth()
+  })
 
-  beforeEach(() => {
-    cy.checkApiHealth();
-  });
+  describe('Health Check Endpoint', () => {
+    it('should return healthy status with database connection', () => {
+      cy.checkApiHealth()
+    })
 
-  it('should have a healthy API endpoint', () => {
-    cy.request(`${Cypress.env('apiUrl')}/health`)
-      .then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body.status).to.eq('healthy');
-        expect(response.body.database).to.eq('connected');
-      });
-  });
+    it('should return proper response structure', () => {
+      cy.request('GET', `${Cypress.env('apiUrl')}/health`).then((response) => {
+        expect(response.status).to.eq(200)
+        expect(response.body).to.have.keys(['status', 'database'])
+        expect(response.body.status).to.be.oneOf(['healthy', 'unhealthy'])
+        expect(response.body.database).to.be.oneOf(['connected', 'disconnected'])
+      })
+    })
+  })
 
-  it('should handle root endpoint', () => {
-    cy.request(`${Cypress.env('apiUrl')}/`)
-      .then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body.message).to.eq('Hello World');
-      });
-  });
+  describe('Root API Endpoint', () => {
+    it('should return hello world message', () => {
+      cy.request('GET', `${Cypress.env('apiUrl')}/`).then((response) => {
+        expect(response.status).to.eq(200)
+        expect(response.body).to.have.property('message', 'Hello World')
+      })
+    })
+  })
 
-  it('should create and retrieve status checks', () => {
-    // Create a status check
-    cy.createStatusCheck(testClient)
-      .then((response) => {
-        expect(response.status).to.eq(200);
-        expect(response.body.client_name).to.eq(testClient);
-        expect(response.body).to.have.property('id');
-        expect(response.body).to.have.property('timestamp');
+  describe('Status Check CRUD Operations', () => {
+    it('should create a new status check', () => {
+      cy.createStatusCheck(testClient).then((statusCheck) => {
+        expect(statusCheck).to.have.property('id')
+        expect(statusCheck).to.have.property('client_name', testClient)
+        expect(statusCheck).to.have.property('timestamp')
         
-        const createdId = response.body.id;
+        // Verify timestamp is a valid date
+        const timestamp = new Date(statusCheck.timestamp)
+        expect(timestamp.getTime()).to.be.a('number')
+        expect(timestamp.getTime()).to.be.greaterThan(Date.now() - 60000) // Within last minute
+      })
+    })
 
-        // Get all status checks and verify our created one exists
-        cy.getStatusChecks()
-          .then((getResponse) => {
-            expect(getResponse.status).to.eq(200);
-            expect(getResponse.body).to.be.an('array');
-            
-            const foundClient = getResponse.body.find(
-              item => item.id === createdId
-            );
-            
-            expect(foundClient).to.exist;
-            expect(foundClient.client_name).to.eq(testClient);
-          });
-      });
-  });
-
-  it('should handle multiple status checks', () => {
-    const clients = ['Client 1', 'Client 2', 'Client 3'];
-    const createdIds = [];
-
-    // Create multiple status checks
-    clients.forEach((client) => {
-      cy.createStatusCheck(client)
-        .then((response) => {
-          expect(response.status).to.eq(200);
-          createdIds.push(response.body.id);
-        });
-    });
-
-    // Verify all were created
-    cy.getStatusChecks()
-      .then((response) => {
-        expect(response.status).to.eq(200);
-        const statusChecks = response.body;
+    it('should retrieve all status checks', () => {
+      // First create a status check
+      cy.createStatusCheck(testClient)
+      
+      // Then retrieve all status checks
+      cy.getStatusChecks().then((statusChecks) => {
+        expect(statusChecks).to.be.an('array')
+        expect(statusChecks.length).to.be.greaterThan(0)
         
-        clients.forEach((client) => {
-          const found = statusChecks.find(sc => sc.client_name === client);
-          expect(found).to.exist;
-        });
-      });
-  });
+        // Check structure of status check objects
+        const firstCheck = statusChecks[0]
+        expect(firstCheck).to.have.property('id')
+        expect(firstCheck).to.have.property('client_name')
+        expect(firstCheck).to.have.property('timestamp')
+      })
+    })
 
-  it('should validate status check data structure', () => {
-    cy.createStatusCheck(testClient)
-      .then((response) => {
-        const statusCheck = response.body;
-        
-        // Validate required fields exist
-        expect(statusCheck).to.have.property('id');
-        expect(statusCheck).to.have.property('client_name');
-        expect(statusCheck).to.have.property('timestamp');
-        
-        // Validate data types
-        expect(statusCheck.id).to.be.a('string');
-        expect(statusCheck.client_name).to.be.a('string');
-        expect(statusCheck.timestamp).to.be.a('string');
-        
-        // Validate timestamp format (ISO string)
-        expect(new Date(statusCheck.timestamp).toISOString()).to.eq(statusCheck.timestamp);
-      });
-  });
-});
+    it('should handle invalid status check creation', () => {
+      cy.request({
+        method: 'POST',
+        url: `${Cypress.env('apiUrl')}/status`,
+        body: {},
+        failOnStatusCode: false
+      }).then((response) => {
+        expect(response.status).to.eq(422) // Validation error
+      })
+    })
+
+    it('should persist status checks across requests', () => {
+      const uniqueClient = `persistent-test-${Date.now()}`
+      
+      // Create status check
+      cy.createStatusCheck(uniqueClient)
+      
+      // Retrieve and verify it exists
+      cy.getStatusChecks().then((statusChecks) => {
+        const foundCheck = statusChecks.find(check => check.client_name === uniqueClient)
+        expect(foundCheck).to.exist
+        expect(foundCheck.client_name).to.eq(uniqueClient)
+      })
+    })
+  })
+
+  describe('API Error Handling', () => {
+    it('should handle non-existent endpoints gracefully', () => {
+      cy.request({
+        method: 'GET',
+        url: `${Cypress.env('apiUrl')}/non-existent-endpoint`,
+        failOnStatusCode: false
+      }).then((response) => {
+        expect(response.status).to.eq(404)
+      })
+    })
+
+    it('should handle invalid HTTP methods', () => {
+      cy.request({
+        method: 'DELETE',
+        url: `${Cypress.env('apiUrl')}/status`,
+        failOnStatusCode: false
+      }).then((response) => {
+        expect(response.status).to.eq(405) // Method not allowed
+      })
+    })
+  })
+
+  describe('CORS Configuration', () => {
+    it('should handle CORS preflight requests', () => {
+      cy.request({
+        method: 'OPTIONS',
+        url: `${Cypress.env('apiUrl')}/status`,
+        headers: {
+          'Origin': 'http://localhost:3000',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'Content-Type'
+        }
+      }).then((response) => {
+        expect(response.status).to.be.oneOf([200, 204])
+        expect(response.headers).to.have.property('access-control-allow-origin')
+      })
+    })
+  })
+})

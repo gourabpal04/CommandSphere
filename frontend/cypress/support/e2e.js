@@ -1,34 +1,16 @@
-// ***********************************************************
-// This example support/e2e.js is processed and
-// loaded automatically before your test files.
-//
-// This is a great place to put global configuration and
-// behavior that modifies Cypress.
-//
-// You can change the location of this file or turn off
-// automatically serving support files with the
-// 'supportFile' configuration option.
-//
-// You can read more here:
-// https://on.cypress.io/configuration
-// ***********************************************************
-
 // Import commands.js using ES2015 syntax:
 import './commands'
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
 
-// Hide fetch/XHR requests from command log for cleaner output
-// This can be customized based on your needs
+// Hide fetch/XHR requests in command log for cleaner test output
 Cypress.on('window:before:load', (win) => {
-  cy.stub(win.console, 'log').as('consoleLog');
-  cy.stub(win.console, 'error').as('consoleError');
-});
+  cy.stub(win.console, 'error').as('consoleError')
+})
 
-// Custom error handling for better debugging
-Cypress.on('uncaught:exception', (err, runnable) => {
-  // Log the error for debugging but don't fail the test
-  console.error('Uncaught exception:', err.message);
-  return false;
-});
+// Global before hook
+beforeEach(() => {
+  // Intercept API calls for better test reliability
+  cy.intercept('GET', '**/api/**').as('apiCall')
+})

@@ -1,64 +1,87 @@
-describe('Application E2E Tests', () => {
+describe('CommandSphere App E2E Tests', () => {
   beforeEach(() => {
-    // Check that API is healthy before running tests
-    cy.checkApiHealth();
-  });
+    // Visit the application
+    cy.visit('/')
+    cy.waitForPageLoad()
+  })
 
-  it('should load the application successfully', () => {
-    cy.waitForApp();
-    
-    // Check that the app has loaded
-    cy.get('body').should('be.visible');
-    
-    // Check that we can see some content (adjust selector based on your app)
-    cy.get('*').should('have.length.greaterThan', 0);
-  });
+  it('should load the homepage successfully', () => {
+    // Check that the page loads
+    cy.get('.App-header').should('be.visible')
+    cy.get('.App-link').should('be.visible')
+    cy.contains('Building something incredible ~!').should('be.visible')
+  })
 
-  it('should be able to interact with the API', () => {
-    // Create a test status check
-    cy.createStatusCheck('E2E Test Client').then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.have.property('client_name', 'E2E Test Client');
-      expect(response.body).to.have.property('id');
-      expect(response.body).to.have.property('timestamp');
-    });
+  it('should have correct page title and meta information', () => {
+    // Check page title
+    cy.title().should('not.be.empty')
+    
+    // Check that React app is loaded
+    cy.get('.App').should('exist')
+  })
 
-    // Get all status checks
-    cy.getStatusChecks().then((response) => {
-      expect(response.status).to.eq(200);
-      expect(response.body).to.be.an('array');
-      
-      // Should find our test client
-      const testClient = response.body.find(item => 
-        item.client_name === 'E2E Test Client'
-      );
-      expect(testClient).to.exist;
-    });
-  });
+  it('should display the Emergent logo with correct attributes', () => {
+    // Check logo image
+    cy.get('.App-link img')
+      .should('be.visible')
+      .should('have.attr', 'src')
+      .and('include', 'githubusercontent.com')
+    
+    // Check link attributes
+    cy.get('.App-link')
+      .should('have.attr', 'href', 'https://emergent.sh')
+      .should('have.attr', 'target', '_blank')
+      .should('have.attr', 'rel', 'noopener noreferrer')
+  })
 
-  it('should handle navigation properly', () => {
-    cy.waitForApp();
+  it('should make API call on page load', () => {
+    // Intercept the API call that happens on page load
+    cy.intercept('GET', '**/api/', { message: 'Hello World' }).as('helloWorldApi')
     
-    // Test that the app handles routes correctly
-    // This will depend on your specific routing setup
-    cy.url().should('include', '/');
+    // Reload to trigger the API call
+    cy.reload()
+    cy.waitForPageLoad()
     
-    // If you have additional routes, test them
-    // cy.visit('/some-route');
-    // cy.url().should('include', '/some-route');
-  });
+    // Wait for API call
+    cy.wait('@helloWorldApi').then((interception) => {
+      expect(interception.response.statusCode).to.eq(200)
+    })
+  })
 
-  it('should be responsive', () => {
-    cy.waitForApp();
+  it('should handle navigation correctly', () => {
+    // Test that React Router is working
+    cy.url().should('eq', Cypress.config().baseUrl + '/')
     
-    // Test different viewport sizes
-    cy.viewport(1920, 1080); // Desktop
-    cy.get('body').should('be.visible');
+    // Test that browser navigation works
+    cy.go('back')
+    cy.go('forward')
+    cy.url().should('eq', Cypress.config().baseUrl + '/')
+  })
+
+  it('should be responsive on different screen sizes', () => {
+    // Test mobile view
+    cy.viewport(375, 667)
+    cy.get('.App-header').should('be.visible')
+    cy.get('.App-link img').should('be.visible')
     
-    cy.viewport(768, 1024); // Tablet
-    cy.get('body').should('be.visible');
+    // Test tablet view
+    cy.viewport(768, 1024)
+    cy.get('.App-header').should('be.visible')
     
-    cy.viewport(375, 667); // Mobile
-    cy.get('body').should('be.visible');
-  });
-});
+    // Test desktop view
+    cy.viewport(1280, 800)
+    cy.get('.App-header').should('be.visible')
+  })
+
+  it('should handle console errors gracefully', () => {
+    cy.window().then((win) => {
+      cy.stub(win.console, 'error').as('consoleError')
+    })
+    
+    cy.reload()
+    cy.waitForPageLoad()
+    
+    // Check that no critical console errors occurred
+    cy.get('@consoleError').should('not.have.been.calledWith', Cypress.sinon.match(/Error/))
+  })
+})

@@ -13,34 +13,49 @@ Cypress.Commands.add('checkApiHealth', () => {
   cy.request({
     method: 'GET',
     url: `${Cypress.env('apiUrl')}/health`,
-    failOnStatusCode: false
+    timeout: 10000
   }).then((response) => {
-    expect(response.status).to.eq(200);
-    expect(response.body).to.have.property('status', 'healthy');
-  });
-});
+    expect(response.status).to.eq(200)
+    expect(response.body).to.have.property('status', 'healthy')
+    expect(response.body).to.have.property('database', 'connected')
+  })
+})
 
-// Custom command to wait for app to be ready
-Cypress.Commands.add('waitForApp', () => {
-  cy.visit('/', { timeout: 60000 });
-  cy.get('body', { timeout: 30000 }).should('be.visible');
-});
-
-// Custom command to create a status check via API
+// Custom command to create a status check
 Cypress.Commands.add('createStatusCheck', (clientName) => {
-  return cy.request({
+  cy.request({
     method: 'POST',
     url: `${Cypress.env('apiUrl')}/status`,
-    body: {
-      client_name: clientName
-    }
-  });
-});
+    body: { client_name: clientName },
+    headers: { 'Content-Type': 'application/json' }
+  }).then((response) => {
+    expect(response.status).to.eq(200)
+    expect(response.body).to.have.property('client_name', clientName)
+    expect(response.body).to.have.property('id')
+    return cy.wrap(response.body)
+  })
+})
 
 // Custom command to get all status checks
 Cypress.Commands.add('getStatusChecks', () => {
-  return cy.request({
+  cy.request({
     method: 'GET',
-    url: `${Cypress.env('apiUrl')}/status`
-  });
-});
+    url: `${Cypress.env('apiUrl')}/status`,
+  }).then((response) => {
+    expect(response.status).to.eq(200)
+    expect(response.body).to.be.an('array')
+    return cy.wrap(response.body)
+  })
+})
+
+// Custom command to wait for page to load completely
+Cypress.Commands.add('waitForPageLoad', () => {
+  cy.get('body').should('be.visible')
+  cy.window().should('have.property', 'document')
+  cy.document().should('have.property', 'readyState', 'complete')
+})
+
+// Add console log command for debugging
+Cypress.Commands.add('log', (message) => {
+  cy.task('log', message)
+})
