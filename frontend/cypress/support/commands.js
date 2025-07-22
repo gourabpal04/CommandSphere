@@ -56,6 +56,6 @@ Cypress.Commands.add('waitForPageLoad', () => {
 })
 
 // Add console log command for debugging
-Cypress.Commands.add('log', (message) => {
+Cypress.Commands.add('logMessage', (message) => {
   cy.task('log', message)
 })
