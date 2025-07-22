@@ -14,6 +14,10 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
+    "test:coverage": "craco test --coverage --watchAll=false",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run",
+    "cypress:install": "cypress install",
     "eject": "react-scripts eject"
   },
   "browserslist": {
