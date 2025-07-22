@@ -3,7 +3,7 @@ echo "=== Phase 5.2 Validation Script ==="
 
 # Test backend health endpoint
 echo "🔍 Testing backend health endpoint..."
-HEALTH_RESPONSE=$(curl -s -w "%{http_code}" https://2f5c2407-4642-416f-9f97-eb035c9b650c.preview.emergentagent.com/api/health)
+HEALTH_RESPONSE=$(curl -s -w "%{http_code}" https://026e59e1-f09f-4d20-892a-aec199da092c.preview.emergentagent.com/api/health)
 HEALTH_STATUS_CODE="${HEALTH_RESPONSE: -3}"
 HEALTH_BODY="${HEALTH_RESPONSE%???}"
 
@@ -16,7 +16,7 @@ fi
 
 # Test root API endpoint
 echo "🔍 Testing root API endpoint..."
-ROOT_RESPONSE=$(curl -s -w "%{http_code}" https://2f5c2407-4642-416f-9f97-eb035c9b650c.preview.emergentagent.com/api/)
+ROOT_RESPONSE=$(curl -s -w "%{http_code}" https://026e59e1-f09f-4d20-892a-aec199da092c.preview.emergentagent.com/api/)
 ROOT_STATUS_CODE="${ROOT_RESPONSE: -3}"
 ROOT_BODY="${ROOT_RESPONSE%???}"
 
@@ -29,7 +29,7 @@ fi
 
 # Test status endpoint (POST)
 echo "🔍 Testing status creation endpoint..."
-STATUS_RESPONSE=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"client_name":"Phase 5.2 Test"}' https://2f5c2407-4642-416f-9f97-eb035c9b650c.preview.emergentagent.com/api/status)
+STATUS_RESPONSE=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"client_name":"Phase 5.2 Test"}' https://026e59e1-f09f-4d20-892a-aec199da092c.preview.emergentagent.com/api/status)
 STATUS_STATUS_CODE="${STATUS_RESPONSE: -3}"
 STATUS_BODY="${STATUS_RESPONSE%???}"
 
@@ -42,7 +42,7 @@ fi
 
 # Test status endpoint (GET)
 echo "🔍 Testing status retrieval endpoint..."
-GET_STATUS_RESPONSE=$(curl -s -w "%{http_code}" https://2f5c2407-4642-416f-9f97-eb035c9b650c.preview.emergentagent.com/api/status)
+GET_STATUS_RESPONSE=$(curl -s -w "%{http_code}" https://026e59e1-f09f-4d20-892a-aec199da092c.preview.emergentagent.com/api/status)
 GET_STATUS_CODE="${GET_STATUS_RESPONSE: -3}"
 GET_STATUS_BODY="${GET_STATUS_RESPONSE%???}"
 
@@ -55,7 +55,7 @@ fi
 
 echo ""
 echo "=== Frontend Test ==="
-FRONTEND_RESPONSE=$(curl -s -w "%{http_code}" -I https://2f5c2407-4642-416f-9f97-eb035c9b650c.preview.emergentagent.com/)
+FRONTEND_RESPONSE=$(curl -s -w "%{http_code}" -I https://026e59e1-f09f-4d20-892a-aec199da092c.preview.emergentagent.com/)
 FRONTEND_STATUS_CODE="${FRONTEND_RESPONSE: -3}"
 
 if [ "$FRONTEND_STATUS_CODE" -eq 200 ]; then
